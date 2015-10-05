@@ -82,6 +82,7 @@ type responseData struct {
 	KeyHash          []byte        `asn1:"optional,explicit,tag:2"`
 	ProducedAt       time.Time     `asn1:"generalized"`
 	Responses        []singleResponse
+	ResponseExtensions []pkix.Extension `asn1:"optional,explicit,tag:1"`
 }
 
 type singleResponse struct {
@@ -91,6 +92,7 @@ type singleResponse struct {
 	Unknown    asn1.Flag   `asn1:"tag:2,optional"`
 	ThisUpdate time.Time   `asn1:"generalized"`
 	NextUpdate time.Time   `asn1:"generalized,explicit,tag:0,optional"`
+	SingleExtensions []pkix.Extension `asn1:"explicit,tag:1,optional"`
 }
 
 type revokedInfo struct {
@@ -273,6 +275,8 @@ type Response struct {
 	ProducedAt, ThisUpdate, NextUpdate, RevokedAt time.Time
 	RevocationReason                              int
 	Certificate                                   *x509.Certificate
+	SingleExtensions                              []pkix.Extension
+	ResponseExtensions                            []pkix.Extension
 	// TBSResponseData contains the raw bytes of the signed response. If
 	// Certificate is nil then this can be used to verify Signature.
 	TBSResponseData    []byte
@@ -381,6 +385,7 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	ret.TBSResponseData = basicResp.TBSResponseData.Raw
 	ret.Signature = basicResp.Signature.RightAlign()
 	ret.SignatureAlgorithm = getSignatureAlgorithmFromOID(basicResp.SignatureAlgorithm.Algorithm)
+	ret.ResponseExtensions = basicResp.ResponseExtensions
 
 	if len(basicResp.Certificates) > 0 {
 		ret.Certificate, err = x509.ParseCertificate(basicResp.Certificates[0].FullBytes)
@@ -421,6 +426,7 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	ret.ProducedAt = basicResp.TBSResponseData.ProducedAt
 	ret.ThisUpdate = r.ThisUpdate
 	ret.NextUpdate = r.NextUpdate
+	ret.SingleExtensions = r.SingleExtensions
 
 	return ret, nil
 }
@@ -536,6 +542,7 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 		},
 		ThisUpdate: template.ThisUpdate.UTC(),
 		NextUpdate: template.NextUpdate.UTC(),
+		SingleExtensions: template.Extensions,
 	}
 
 	switch template.Status {
@@ -587,6 +594,7 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 			Bytes:     signature,
 			BitLength: 8 * len(signature),
 		},
+		ResponseExtensions: template.ResponseExtensions,
 	}
 	if template.Certificate != nil {
 		response.Certificates = []asn1.RawValue{
